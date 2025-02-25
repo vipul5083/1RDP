@@ -7,7 +7,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Cleanup Old ngrok Files
+      - name: Cleanup Old Files
         run: Remove-Item -Recurse -Force ngrok, ngrok.zip -ErrorAction SilentlyContinue
 
       - name: Download ngrok
@@ -15,6 +15,21 @@ jobs:
 
       - name: Extract ngrok
         run: Expand-Archive -Path ngrok.zip -DestinationPath ngrok -Force
+
+      - name: Debug Secrets (Check if Set)
+        run: |
+          if ("${{ secrets.NGROK_AUTH_TOKEN }}" -eq "") {
+            Write-Host "⚠️ ERROR: NGROK_AUTH_TOKEN is empty!"
+            exit 1
+          }
+          if ("${{ secrets.RDP_PASSWORD }}" -eq "") {
+            Write-Host "⚠️ ERROR: RDP_PASSWORD is empty!"
+            exit 1
+          }
+          Write-Host "✅ Secrets are set correctly."
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
 
       - name: Authenticate ngrok
         run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
@@ -30,10 +45,6 @@ jobs:
 
       - name: Set RDP Password
         run: |
-          if ("${{ secrets.RDP_PASSWORD }}" -eq "") {
-            Write-Host "⚠️ Error: RDP_PASSWORD secret is not set!"
-            exit 1
-          }
           $password = ConvertTo-SecureString -AsPlainText "${{ secrets.RDP_PASSWORD }}" -Force
           Set-LocalUser -Name "runneradmin" -Password $password
           Write-Host "✅ RDP Password Set Successfully!"
@@ -43,6 +54,7 @@ jobs:
       - name: Start ngrok TCP Tunnel for RDP
         run: |
           Write-Host "🚀 Starting ngrok tunnel for RDP..."
-          .\ngrok\ngrok.exe tcp 3389 > ngrok.log 2>&1 &
-          Start-Sleep -Seconds 5
-          Get-Content ngrok.log | Select-String "tcp://" | ForEach-Object { $_.Matches.Value }
+          Start-Process -FilePath .\ngrok\ngrok.exe -ArgumentList "tcp 3389" -NoNewWindow
+          Start-Sleep -Seconds 10
+          $ngrokUrl = (Get-Content ngrok.log | Select-String "tcp://").Matches.Value
+          Write-Host "🔗 ngrok RDP URL: $ngrokUrl"
